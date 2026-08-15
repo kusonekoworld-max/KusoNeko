@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Memory
@@ -154,8 +154,8 @@ fun CpuTab(rootGranted: Boolean) {
                         if (policy.availableFrequencies.isNotEmpty()) {
                             SectionLabel("Available frequencies (MHz)")
                             FlowFreqChips(
-                                values = policy.availableFrequencies.map { it / 1000 },
-                                highlight = policy.currentFreq?.div(1000)
+                                values = policy.availableFrequencies.map { (it / 1000).toLong() },
+                                highlight = policy.currentFreq?.let { (it / 1000).toLong() }
                             )
                         }
                     }
