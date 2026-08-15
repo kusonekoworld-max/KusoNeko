@@ -15,10 +15,21 @@ data class CoolingDevice(
     val maxState: Int?
 )
 
+data class ThermalTrip(
+    val zoneId: String,
+    val index: Int,
+    val type: String?,      // e.g. "passive", "critical", "hot"
+    val tempMilliC: Int?
+)
+
 /**
  * Zones and cooling devices both come from the generic Linux thermal
  * framework (/sys/class/thermal/thermal_zoneN, /cooling_deviceN), so
  * enumeration here is chipset-agnostic and needs no vendor branches.
+ * Trip points (trip_point_N_temp) are the actual temperature thresholds
+ * that decide when throttling kicks in for a zone — writable on most
+ * mainline-derived thermal drivers, which is what lets this app actually
+ * change thermal behavior rather than just observe it.
  *
  * Throttle-disable knobs, by contrast, are genuinely vendor-specific
  * module params with no common path — kept as a checked candidate list
@@ -67,8 +78,44 @@ object ThermalTweaks {
         }
     }
 
+    /** Set a cooling device's throttle level directly (0 = no throttle, up to maxState). */
+    fun setCoolingState(deviceId: String, state: Int): Boolean =
+        RootShell.write("$THERMAL_ROOT/$deviceId/cur_state", state.toString())
+
+    /**
+     * Trip points are fetched lazily per-zone (only when the user expands
+     * a zone in the UI) rather than for every zone up front — a device can
+     * have 20-30 zones and scanning all of their trip points on load would
+     * be a lot of unnecessary root round-trips for data most zones never
+     * show.
+     */
+    fun listTripPoints(zoneId: String): List<ThermalTrip> {
+        val base = "$THERMAL_ROOT/$zoneId"
+        val names = RootShell.cmd("ls $base 2>/dev/null")
+            .filter { it.matches(Regex("trip_point_\\d+_temp")) }
+
+        return names.mapNotNull { name ->
+            val idx = Regex("trip_point_(\\d+)_temp").find(name)?.groupValues?.get(1)?.toIntOrNull()
+                ?: return@mapNotNull null
+            ThermalTrip(
+                zoneId = zoneId,
+                index = idx,
+                type = RootShell.read("$base/trip_point_${idx}_type"),
+                tempMilliC = RootShell.read("$base/trip_point_${idx}_temp")?.trim()?.toIntOrNull()
+            )
+        }.sortedBy { it.index }
+    }
+
+    /** Adjust the temperature threshold for a given trip point — this is the actual "how hot before it throttles" knob. */
+    fun setTripTemp(zoneId: String, index: Int, milliC: Int): Boolean =
+        RootShell.write("$THERMAL_ROOT/$zoneId/trip_point_${index}_temp", milliC.toString())
+
     /** Returns only the toggle paths that actually exist on this device. */
     fun availableToggles(): List<String> = KNOWN_TOGGLES.filter { RootShell.exists(it) }
+
+    /** Current on/off state of a toggle, if readable. */
+    fun currentToggleState(path: String): Boolean? =
+        RootShell.read(path)?.trim()?.let { it == "1" || it.equals("true", ignoreCase = true) }
 
     fun setToggle(path: String, enabled: Boolean): Boolean {
         if (path !in KNOWN_TOGGLES || !RootShell.exists(path)) return false
