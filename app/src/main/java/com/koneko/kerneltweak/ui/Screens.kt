@@ -1,80 +1,90 @@
 package com.koneko.kerneltweak.ui
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.koneko.kerneltweak.root.RootShell
 import com.koneko.kerneltweak.tweaks.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private enum class Dest(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    DASHBOARD("Home", Icons.Filled.Dashboard),
+    CPU("CPU", Icons.Filled.Speed),
+    GPU("GPU", Icons.Filled.Memory),
+    THERMAL("Thermal", Icons.Filled.Thermostat),
+    SCAN("Scan", Icons.Filled.Bolt)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KernelTweakApp(rootGranted: Boolean) {
-    var tab by remember { mutableStateOf(0) }
-    val tabs = listOf(
-        Triple("CPU", Icons.Filled.Speed, 0),
-        Triple("GPU", Icons.Filled.Memory, 1),
-        Triple("Thermal", Icons.Filled.Thermostat, 2),
-        Triple("Scan", Icons.Filled.Bolt, 3)
-    )
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    var dest by remember { mutableStateOf(Dest.DASHBOARD) }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            Column {
-                LargeTopAppBar(
-                    title = { Text("KernelTweak") },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                )
-                if (!rootGranted) {
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+            CenterAlignedTopAppBar(
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("KernelTweak", fontWeight = FontWeight.SemiBold)
                         Text(
-                            "Root access not granted — tweaks are disabled.",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodyMedium
+                            if (rootGranted) "root ready" else "root not granted",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (rootGranted) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error
                         )
                     }
-                }
-                SecondaryTabRow(selectedTabIndex = tab) {
-                    tabs.forEach { (label, icon, index) ->
-                        Tab(
-                            selected = tab == index,
-                            onClick = { tab = index },
-                            text = { Text(label) },
-                            icon = { Icon(icon, contentDescription = label) }
-                        )
-                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                Dest.entries.forEach { d ->
+                    NavigationBarItem(
+                        selected = dest == d,
+                        onClick = { dest = d },
+                        icon = { Icon(d.icon, contentDescription = d.label) },
+                        label = { Text(d.label) }
+                    )
                 }
             }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                0 -> CpuTab(rootGranted)
-                1 -> GpuTab(rootGranted)
-                2 -> ThermalTab(rootGranted)
-                3 -> ScanTab(rootGranted)
+            Crossfade(targetState = dest, animationSpec = tween(220), label = "tab") { current ->
+                when (current) {
+                    Dest.DASHBOARD -> DashboardTab(rootGranted)
+                    Dest.CPU -> CpuTab(rootGranted)
+                    Dest.GPU -> GpuTab(rootGranted)
+                    Dest.THERMAL -> ThermalTab(rootGranted)
+                    Dest.SCAN -> ScanTab(rootGranted)
+                }
             }
         }
     }
@@ -86,8 +96,167 @@ private fun SectionLabel(text: String) {
         text,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+        modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
     )
+}
+
+/** Quick-glance summary + one-tap profile presets. */
+@Composable
+fun DashboardTab(rootGranted: Boolean) {
+    var policies by remember { mutableStateOf<List<CpuPolicy>>(emptyList()) }
+    var gpuNodes by remember { mutableStateOf<List<GpuState>>(emptyList()) }
+    var zones by remember { mutableStateOf<List<ThermalZone>>(emptyList()) }
+    var applying by remember { mutableStateOf<ProfileTweaks.Profile?>(null) }
+    var lastApplied by remember { mutableStateOf<ProfileTweaks.Profile?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun refresh() {
+        zones = withContext(Dispatchers.IO) { ThermalTweaks.listZones() }
+        if (rootGranted) {
+            policies = withContext(Dispatchers.IO) { CpuTweaks.listPolicies() }
+            gpuNodes = withContext(Dispatchers.IO) { GpuTweaks.scan() }
+        }
+    }
+
+    LaunchedEffect(rootGranted) { refresh() }
+
+    val hottest = zones.mapNotNull { it.tempMilliC }.maxOrNull()?.let { it / 1000.0 }
+
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StatCard(
+                    modifier = Modifier.weight(1f),
+                    title = "CPU clusters",
+                    value = policies.size.toString(),
+                    subtitle = policies.joinToString(" · ") { it.currentGovernor ?: "?" }
+                        .ifEmpty { "no data" }
+                )
+                StatCard(
+                    modifier = Modifier.weight(1f),
+                    title = "GPU nodes",
+                    value = gpuNodes.size.toString(),
+                    subtitle = gpuNodes.firstOrNull()?.currentGovernor ?: "no data"
+                )
+            }
+        }
+        item {
+            StatCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = "Hottest zone",
+                value = hottest?.let { "%.1f°C".format(it) } ?: "n/a",
+                subtitle = "${zones.size} thermal zone(s) tracked"
+            )
+        }
+
+        item { SectionLabel("Profiles") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ProfileButton(
+                    icon = Icons.Filled.BatteryStd,
+                    profile = ProfileTweaks.Profile.BATTERY_SAVER,
+                    description = "Lower clocks, conservative governor — longer screen-on time",
+                    enabled = rootGranted && !applying.let { it != null },
+                    applying = applying == ProfileTweaks.Profile.BATTERY_SAVER,
+                    applied = lastApplied == ProfileTweaks.Profile.BATTERY_SAVER
+                ) {
+                    applying = ProfileTweaks.Profile.BATTERY_SAVER
+                    scope.launch(Dispatchers.IO) {
+                        ProfileTweaks.apply(ProfileTweaks.Profile.BATTERY_SAVER, policies, gpuNodes)
+                        refresh()
+                        applying = null
+                        lastApplied = ProfileTweaks.Profile.BATTERY_SAVER
+                    }
+                }
+                ProfileButton(
+                    icon = Icons.Filled.Tune,
+                    profile = ProfileTweaks.Profile.BALANCED,
+                    description = "Full range, adaptive governor — default daily driving",
+                    enabled = rootGranted && applying == null,
+                    applying = applying == ProfileTweaks.Profile.BALANCED,
+                    applied = lastApplied == ProfileTweaks.Profile.BALANCED
+                ) {
+                    applying = ProfileTweaks.Profile.BALANCED
+                    scope.launch(Dispatchers.IO) {
+                        ProfileTweaks.apply(ProfileTweaks.Profile.BALANCED, policies, gpuNodes)
+                        refresh()
+                        applying = null
+                        lastApplied = ProfileTweaks.Profile.BALANCED
+                    }
+                }
+                ProfileButton(
+                    icon = Icons.Filled.RocketLaunch,
+                    profile = ProfileTweaks.Profile.PERFORMANCE,
+                    description = "Top-quartile clocks locked in — gaming / benchmarking",
+                    enabled = rootGranted && applying == null,
+                    applying = applying == ProfileTweaks.Profile.PERFORMANCE,
+                    applied = lastApplied == ProfileTweaks.Profile.PERFORMANCE
+                ) {
+                    applying = ProfileTweaks.Profile.PERFORMANCE
+                    scope.launch(Dispatchers.IO) {
+                        ProfileTweaks.apply(ProfileTweaks.Profile.PERFORMANCE, policies, gpuNodes)
+                        refresh()
+                        applying = null
+                        lastApplied = ProfileTweaks.Profile.PERFORMANCE
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatCard(modifier: Modifier = Modifier, title: String, value: String, subtitle: String) {
+    ElevatedCard(modifier = modifier, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp), fontWeight = FontWeight.Bold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    profile: ProfileTweaks.Profile,
+    description: String,
+    enabled: Boolean,
+    applying: Boolean,
+    applied: Boolean,
+    onClick: () -> Unit
+) {
+    ElevatedCard(
+        onClick = onClick,
+        enabled = enabled,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(profile.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Text(description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            when {
+                applying -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                applied -> Icon(Icons.Filled.CheckCircle, contentDescription = "applied", tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
 }
 
 @Composable
@@ -95,9 +264,8 @@ fun CpuTab(rootGranted: Boolean) {
     var policies by remember { mutableStateOf<List<CpuPolicy>?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(rootGranted) {
-        if (rootGranted) policies = withContext(Dispatchers.IO) { CpuTweaks.listPolicies() }
-    }
+    suspend fun reload() { policies = withContext(Dispatchers.IO) { CpuTweaks.listPolicies() } }
+    LaunchedEffect(rootGranted) { if (rootGranted) reload() }
 
     LoadingOrEmptyOrContent(
         loading = rootGranted && policies == null,
@@ -110,14 +278,14 @@ fun CpuTab(rootGranted: Boolean) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(policies.orEmpty()) { policy ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
+                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
                     Column(Modifier.padding(16.dp)) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(policy.policyId, style = MaterialTheme.typography.titleMedium)
+                            Text(policy.policyId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                             Text(
                                 "cpus ${policy.cpus.joinToString(",")}",
                                 style = MaterialTheme.typography.labelMedium,
@@ -125,9 +293,10 @@ fun CpuTab(rootGranted: Boolean) {
                             )
                         }
                         Text(
-                            "${policy.currentFreq?.div(1000) ?: "?"} MHz now  ·  ${(policy.minFreq ?: 0) / 1000} – ${(policy.maxFreq ?: 0) / 1000} MHz range",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "${policy.currentFreq?.div(1000) ?: "?"} MHz now",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
 
                         if (policy.availableGovernors.isNotEmpty()) {
@@ -138,24 +307,33 @@ fun CpuTab(rootGranted: Boolean) {
                                 onSelect = { gov ->
                                     scope.launch(Dispatchers.IO) {
                                         CpuTweaks.setGovernor(policy.policyId, gov)
-                                        policies = CpuTweaks.listPolicies()
+                                        reload()
                                     }
                                 }
                             )
                         } else {
-                            Text(
-                                "No scaling_available_governors exposed for this policy.",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
+                            ErrorHint("No scaling_available_governors exposed for this policy.")
                         }
 
                         if (policy.availableFrequencies.isNotEmpty()) {
-                            SectionLabel("Available frequencies (MHz)")
-                            FlowFreqChips(
+                            FreqEditor(
+                                label = "Frequency (MHz)",
                                 values = policy.availableFrequencies.map { (it / 1000).toLong() },
-                                highlight = policy.currentFreq?.let { (it / 1000).toLong() }
+                                current = policy.currentFreq?.let { (it / 1000).toLong() },
+                                minValue = policy.minFreq?.let { (it / 1000).toLong() },
+                                maxValue = policy.maxFreq?.let { (it / 1000).toLong() },
+                                onSetMin = { v ->
+                                    scope.launch(Dispatchers.IO) {
+                                        CpuTweaks.setMinFreq(policy.policyId, (v * 1000).toInt())
+                                        reload()
+                                    }
+                                },
+                                onSetMax = { v ->
+                                    scope.launch(Dispatchers.IO) {
+                                        CpuTweaks.setMaxFreq(policy.policyId, (v * 1000).toInt())
+                                        reload()
+                                    }
+                                }
                             )
                         }
                     }
@@ -170,9 +348,8 @@ fun GpuTab(rootGranted: Boolean) {
     var nodes by remember { mutableStateOf<List<GpuState>?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(rootGranted) {
-        if (rootGranted) nodes = withContext(Dispatchers.IO) { GpuTweaks.scan() }
-    }
+    suspend fun reload() { nodes = withContext(Dispatchers.IO) { GpuTweaks.scan() } }
+    LaunchedEffect(rootGranted) { if (rootGranted) reload() }
 
     LoadingOrEmptyOrContent(
         loading = rootGranted && nodes == null,
@@ -185,17 +362,19 @@ fun GpuTab(rootGranted: Boolean) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(nodes.orEmpty()) { node ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
+                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(node.label, style = MaterialTheme.typography.titleMedium)
+                        Text(node.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                         Text(
                             node.nodePath,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            "${node.currentFreq?.div(1_000_000) ?: "?"} MHz now  ·  ${(node.minFreq ?: 0) / 1_000_000} – ${(node.maxFreq ?: 0) / 1_000_000} MHz range",
-                            style = MaterialTheme.typography.bodyMedium
+                            "${node.currentFreq?.div(1_000_000) ?: "?"} MHz now",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
 
                         if (node.availableGovernors.isNotEmpty()) {
@@ -206,24 +385,33 @@ fun GpuTab(rootGranted: Boolean) {
                                 onSelect = { gov ->
                                     scope.launch(Dispatchers.IO) {
                                         GpuTweaks.setGovernor(node.nodePath, gov)
-                                        nodes = GpuTweaks.scan()
+                                        reload()
                                     }
                                 }
                             )
                         } else {
-                            Text(
-                                "No available_governors exposed on this node — governor switching isn't supported here.",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
+                            ErrorHint("No available_governors exposed on this node — governor switching isn't supported here.")
                         }
 
                         if (node.availableFrequencies.isNotEmpty()) {
-                            SectionLabel("Available frequencies (MHz)")
-                            FlowFreqChips(
+                            FreqEditor(
+                                label = "Frequency (MHz)",
                                 values = node.availableFrequencies.map { it / 1_000_000 },
-                                highlight = node.currentFreq?.div(1_000_000)
+                                current = node.currentFreq?.div(1_000_000),
+                                minValue = node.minFreq?.div(1_000_000),
+                                maxValue = node.maxFreq?.div(1_000_000),
+                                onSetMin = { v ->
+                                    scope.launch(Dispatchers.IO) {
+                                        GpuTweaks.setMinFreq(node.nodePath, v * 1_000_000)
+                                        reload()
+                                    }
+                                },
+                                onSetMax = { v ->
+                                    scope.launch(Dispatchers.IO) {
+                                        GpuTweaks.setMaxFreq(node.nodePath, v * 1_000_000)
+                                        reload()
+                                    }
+                                }
                             )
                         }
                     }
@@ -257,7 +445,7 @@ fun ThermalTab(rootGranted: Boolean) {
                 item { SectionLabel("Throttle toggles") }
                 items(toggles) { path ->
                     var checked by remember { mutableStateOf(true) }
-                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
                         ListItem(
                             headlineContent = { Text(path, style = MaterialTheme.typography.bodyMedium) },
                             trailingContent = {
@@ -278,7 +466,8 @@ fun ThermalTab(rootGranted: Boolean) {
             item { SectionLabel("Zones") }
             items(zones.orEmpty()) { zone ->
                 val tempC = zone.tempMilliC?.let { it / 1000.0 }
-                ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                val hot = (tempC ?: 0.0) >= 45.0
+                ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
                     ListItem(
                         headlineContent = { Text(zone.type ?: zone.zoneId) },
                         supportingContent = { Text(zone.zoneId) },
@@ -286,7 +475,8 @@ fun ThermalTab(rootGranted: Boolean) {
                             Text(
                                 tempC?.let { "%.1f°C".format(it) } ?: "n/a",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Bold,
+                                color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     )
@@ -298,9 +488,8 @@ fun ThermalTab(rootGranted: Boolean) {
 
 /**
  * Full-system frequency scan: walks /sys for every *available_frequencies
- * node (cpu, gpu, devfreq buses, anything else exposing the same trio) and
- * lets you push every discovered node to its max in one tap — same effect
- * as the shell one-liner, done natively with root already held.
+ * node and lets you push every discovered node to its max in one tap, or
+ * tap an individual frequency chip to lock just that node to that value.
  */
 @Composable
 fun ScanTab(rootGranted: Boolean) {
@@ -342,7 +531,8 @@ fun ScanTab(rootGranted: Boolean) {
                         }
                     },
                     enabled = !applying && !nodes.isNullOrEmpty(),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().height(50.dp)
                 ) {
                     if (applying) {
                         CircularProgressIndicator(
@@ -369,9 +559,9 @@ fun ScanTab(rootGranted: Boolean) {
                 item { Spacer(Modifier.height(4.dp)) }
             }
 
-            item { SectionLabel("Discovered nodes") }
+            item { SectionLabel("Discovered nodes — tap a value to lock min+max there") }
             items(nodes.orEmpty()) { node ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
+                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
                             node.dir,
@@ -384,16 +574,44 @@ fun ScanTab(rootGranted: Boolean) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (node.targets.isEmpty()) {
-                            Text(
-                                "no max_freq/min_freq sibling here — read-only",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error
-                            )
+                            ErrorHint("no max_freq/min_freq sibling here — read-only")
                         }
-                        FlowFreqChips(node.frequencies)
+                        FlowRowFreqLock(node)
                     }
                 }
             }
+        }
+    }
+}
+
+/** Tapping a value writes it to every max_freq/min_freq sibling for this node. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowRowFreqLock(node: FreqNode) {
+    val scope = rememberCoroutineScope()
+    var locked by remember(node.dir) { mutableStateOf<Long?>(null) }
+
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        node.frequencies.forEach { v ->
+            FilterChip(
+                selected = v == locked,
+                onClick = {
+                    if (node.targets.isEmpty()) return@FilterChip
+                    locked = v
+                    scope.launch(Dispatchers.IO) {
+                        node.targets.forEach { target ->
+                            RootShell.cmd("chmod 644 '$target' 2>/dev/null")
+                            RootShell.write(target, v.toString())
+                        }
+                    }
+                },
+                enabled = node.targets.isNotEmpty(),
+                label = { Text(v.toString()) }
+            )
         }
     }
 }
@@ -417,6 +635,20 @@ private fun LoadingOrEmptyOrContent(
     }
 }
 
+@Composable
+private fun ErrorHint(text: String) {
+    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Filled.ErrorOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+    }
+}
+
 /** Wrapping row of FilterChips where the currently-active option is visually selected. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -436,23 +668,52 @@ private fun FlowChips(options: List<String>, selected: String?, onSelect: (Strin
     }
 }
 
-/** Wrapping row of read-only chips listing raw frequency values; `highlight`
- *  (if it matches a value) is drawn as a selected FilterChip so the current
- *  operating point stands out among the full table. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Editable min/max frequency row: a Min/Max segmented toggle picks which
+ * bound you're setting, then tapping any value in the wrapping chip row
+ * writes it immediately. The value matching the live current frequency is
+ * marked with a dot so it's easy to tell what's actually running right now
+ * versus what the min/max clamp is set to.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FlowFreqChips(values: List<Long>, highlight: Long? = null) {
+private fun FreqEditor(
+    label: String,
+    values: List<Long>,
+    current: Long?,
+    minValue: Long?,
+    maxValue: Long?,
+    onSetMin: (Long) -> Unit,
+    onSetMax: (Long) -> Unit
+) {
+    var editingMax by remember { mutableStateOf(true) }
+
+    SectionLabel(label)
+    SingleChoiceSegmentedButtonRow(Modifier.padding(bottom = 8.dp)) {
+        SegmentedButton(
+            selected = editingMax,
+            onClick = { editingMax = true },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+        ) { Text("Set Max") }
+        SegmentedButton(
+            selected = !editingMax,
+            onClick = { editingMax = false },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+        ) { Text("Set Min") }
+    }
+
     FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         values.forEach { v ->
-            if (v == highlight) {
-                FilterChip(selected = true, onClick = {}, label = { Text(v.toString()) })
-            } else {
-                AssistChip(onClick = {}, label = { Text(v.toString()) })
-            }
+            val isBoundSelected = if (editingMax) v == maxValue else v == minValue
+            FilterChip(
+                selected = isBoundSelected,
+                onClick = { if (editingMax) onSetMax(v) else onSetMin(v) },
+                label = { Text(if (v == current) "$v •" else "$v") }
+            )
         }
     }
 }
