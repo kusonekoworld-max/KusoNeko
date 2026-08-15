@@ -8,12 +8,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thermostat
@@ -22,22 +27,32 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koneko.kerneltweak.boot.BootConfigStore
 import com.koneko.kerneltweak.root.RootShell
 import com.koneko.kerneltweak.tweaks.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private enum class Dest(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     DASHBOARD("Home", Icons.Filled.Dashboard),
     CPU("CPU", Icons.Filled.Speed),
     GPU("GPU", Icons.Filled.Memory),
     THERMAL("Thermal", Icons.Filled.Thermostat),
-    SCAN("Scan", Icons.Filled.Bolt)
+    INFO("Info", Icons.Filled.Info),
+    SCAN("Scan", Icons.Filled.Bolt) // reached from the Dashboard card, not shown in bottom nav
 }
+
+private val BOTTOM_NAV_DESTS = listOf(Dest.DASHBOARD, Dest.CPU, Dest.GPU, Dest.THERMAL, Dest.INFO)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +73,13 @@ fun KernelTweakApp(rootGranted: Boolean) {
                         )
                     }
                 },
+                navigationIcon = {
+                    if (dest == Dest.SCAN) {
+                        IconButton(onClick = { dest = Dest.DASHBOARD }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -65,7 +87,7 @@ fun KernelTweakApp(rootGranted: Boolean) {
         },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                Dest.entries.forEach { d ->
+                BOTTOM_NAV_DESTS.forEach { d ->
                     NavigationBarItem(
                         selected = dest == d,
                         onClick = { dest = d },
@@ -79,10 +101,11 @@ fun KernelTweakApp(rootGranted: Boolean) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             Crossfade(targetState = dest, animationSpec = tween(220), label = "tab") { current ->
                 when (current) {
-                    Dest.DASHBOARD -> DashboardTab(rootGranted)
+                    Dest.DASHBOARD -> DashboardTab(rootGranted, onOpenScan = { dest = Dest.SCAN })
                     Dest.CPU -> CpuTab(rootGranted)
                     Dest.GPU -> GpuTab(rootGranted)
                     Dest.THERMAL -> ThermalTab(rootGranted)
+                    Dest.INFO -> InfoTab()
                     Dest.SCAN -> ScanTab(rootGranted)
                 }
             }
@@ -100,9 +123,9 @@ private fun SectionLabel(text: String) {
     )
 }
 
-/** Quick-glance summary + one-tap profile presets. */
+/** Quick-glance summary, boot-apply toggle, and one-tap profile presets. */
 @Composable
-fun DashboardTab(rootGranted: Boolean) {
+fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
     var policies by remember { mutableStateOf<List<CpuPolicy>>(emptyList()) }
     var gpuNodes by remember { mutableStateOf<List<GpuState>>(emptyList()) }
     var zones by remember { mutableStateOf<List<ThermalZone>>(emptyList()) }
@@ -128,13 +151,12 @@ fun DashboardTab(rootGranted: Boolean) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(
                     modifier = Modifier.weight(1f),
                     title = "CPU clusters",
                     value = policies.size.toString(),
-                    subtitle = policies.joinToString(" · ") { it.currentGovernor ?: "?" }
-                        .ifEmpty { "no data" }
+                    subtitle = policies.joinToString(" · ") { it.currentGovernor ?: "?" }.ifEmpty { "no data" }
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
@@ -152,6 +174,29 @@ fun DashboardTab(rootGranted: Boolean) {
                 subtitle = "${zones.size} thermal zone(s) tracked"
             )
         }
+        item {
+            ElevatedCard(onClick = onOpenScan, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+                Row(
+                    Modifier.padding(16.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Full system frequency scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                        Text(
+                            "Find and max every frequency node under /sys",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item { BootConfigCard(rootGranted, policies, gpuNodes) }
 
         item { SectionLabel("Profiles") }
         item {
@@ -160,7 +205,7 @@ fun DashboardTab(rootGranted: Boolean) {
                     icon = Icons.Filled.BatteryStd,
                     profile = ProfileTweaks.Profile.BATTERY_SAVER,
                     description = "Lower clocks, conservative governor — longer screen-on time",
-                    enabled = rootGranted && !applying.let { it != null },
+                    enabled = rootGranted && applying == null,
                     applying = applying == ProfileTweaks.Profile.BATTERY_SAVER,
                     applied = lastApplied == ProfileTweaks.Profile.BATTERY_SAVER
                 ) {
@@ -210,16 +255,80 @@ fun DashboardTab(rootGranted: Boolean) {
 }
 
 @Composable
+private fun BootConfigCard(rootGranted: Boolean, policies: List<CpuPolicy>, gpuNodes: List<GpuState>) {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(BootConfigStore.isEnabled(context)) }
+    var savedAt by remember { mutableStateOf(BootConfigStore.savedAt(context)) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+        Row(
+            Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Apply on boot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Text(
+                    when {
+                        saving -> "Saving current settings…"
+                        enabled && savedAt > 0 ->
+                            "Saved " + SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date(savedAt))
+                        else -> "Snapshot current CPU/GPU/thermal settings, reapply every boot"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            if (saving) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Switch(
+                    checked = enabled,
+                    enabled = rootGranted,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            saving = true
+                            scope.launch(Dispatchers.IO) {
+                                val toggles = ThermalTweaks.availableToggles()
+                                val toggleStates = toggles.associateWith { ThermalTweaks.currentToggleState(it) ?: true }
+                                BootConfigStore.saveSnapshot(context, policies, gpuNodes, toggleStates)
+                                enabled = true
+                                savedAt = BootConfigStore.savedAt(context)
+                                saving = false
+                            }
+                        } else {
+                            BootConfigStore.disable(context)
+                            enabled = false
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatCard(modifier: Modifier = Modifier, title: String, value: String, subtitle: String) {
     ElevatedCard(modifier = modifier, shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(16.dp)) {
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp), fontWeight = FontWeight.Bold)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Text(
                 subtitle,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -249,8 +358,15 @@ private fun ProfileButton(
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(profile.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                Text(description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+            Spacer(Modifier.width(8.dp))
             when {
                 applying -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 applied -> Icon(Icons.Filled.CheckCircle, contentDescription = "applied", tint = MaterialTheme.colorScheme.primary)
@@ -289,7 +405,9 @@ fun CpuTab(rootGranted: Boolean) {
                             Text(
                                 "cpus ${policy.cpus.joinToString(",")}",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Text(
@@ -335,6 +453,8 @@ fun CpuTab(rootGranted: Boolean) {
                                     }
                                 }
                             )
+                        } else {
+                            ErrorHint("No scaling_available_frequencies exposed — min/max cannot be set here.")
                         }
                     }
                 }
@@ -368,7 +488,9 @@ fun GpuTab(rootGranted: Boolean) {
                         Text(
                             node.nodePath,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             "${node.currentFreq?.div(1_000_000) ?: "?"} MHz now",
@@ -413,6 +535,8 @@ fun GpuTab(rootGranted: Boolean) {
                                     }
                                 }
                             )
+                        } else {
+                            ErrorHint("No available_frequencies exposed — min/max cannot be set here.")
                         }
                     }
                 }
@@ -425,11 +549,15 @@ fun GpuTab(rootGranted: Boolean) {
 fun ThermalTab(rootGranted: Boolean) {
     var zones by remember { mutableStateOf<List<ThermalZone>?>(null) }
     var toggles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var coolingDevices by remember { mutableStateOf<List<CoolingDevice>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(rootGranted) {
         zones = withContext(Dispatchers.IO) { ThermalTweaks.listZones() }
-        if (rootGranted) toggles = withContext(Dispatchers.IO) { ThermalTweaks.availableToggles() }
+        if (rootGranted) {
+            toggles = withContext(Dispatchers.IO) { ThermalTweaks.availableToggles() }
+            coolingDevices = withContext(Dispatchers.IO) { ThermalTweaks.listCoolingDevices() }
+        }
     }
 
     LoadingOrEmptyOrContent(
@@ -444,10 +572,12 @@ fun ThermalTab(rootGranted: Boolean) {
             if (rootGranted && toggles.isNotEmpty()) {
                 item { SectionLabel("Throttle toggles") }
                 items(toggles) { path ->
-                    var checked by remember { mutableStateOf(true) }
+                    var checked by remember(path) { mutableStateOf(ThermalTweaks.currentToggleState(path) ?: true) }
                     ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
                         ListItem(
-                            headlineContent = { Text(path, style = MaterialTheme.typography.bodyMedium) },
+                            headlineContent = {
+                                Text(path, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
                             trailingContent = {
                                 Switch(
                                     checked = checked,
@@ -463,23 +593,182 @@ fun ThermalTab(rootGranted: Boolean) {
                 item { Spacer(Modifier.height(8.dp)) }
             }
 
-            item { SectionLabel("Zones") }
+            if (rootGranted && coolingDevices.isNotEmpty()) {
+                item { SectionLabel("Cooling devices") }
+                items(coolingDevices) { device ->
+                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
+                        CoolingDeviceRow(device)
+                    }
+                }
+                item { Spacer(Modifier.height(8.dp)) }
+            }
+
+            item { SectionLabel("Zones — tap to adjust trip points") }
             items(zones.orEmpty()) { zone ->
-                val tempC = zone.tempMilliC?.let { it / 1000.0 }
-                val hot = (tempC ?: 0.0) >= 45.0
-                ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
-                    ListItem(
-                        headlineContent = { Text(zone.type ?: zone.zoneId) },
-                        supportingContent = { Text(zone.zoneId) },
-                        trailingContent = {
-                            Text(
-                                tempC?.let { "%.1f°C".format(it) } ?: "n/a",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                ZoneCard(zone, rootGranted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoolingDeviceRow(device: CoolingDevice) {
+    val maxState = device.maxState
+    val scope = rememberCoroutineScope()
+    var state by remember(device.deviceId) { mutableStateOf((device.curState ?: 0).toFloat()) }
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                device.type ?: device.deviceId,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "${state.toInt()} / ${maxState ?: "?"}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (maxState != null && maxState > 0) {
+            Slider(
+                value = state,
+                onValueChange = { state = it },
+                onValueChangeFinished = {
+                    scope.launch(Dispatchers.IO) { ThermalTweaks.setCoolingState(device.deviceId, state.toInt()) }
+                },
+                valueRange = 0f..maxState.toFloat(),
+                steps = (maxState - 1).coerceIn(0, 30)
+            )
+        } else {
+            ErrorHint("No max_state exposed — throttle level can't be set here.")
+        }
+    }
+}
+
+@Composable
+private fun ZoneCard(zone: ThermalZone, rootGranted: Boolean) {
+    var expanded by remember { mutableStateOf(false) }
+    var trips by remember(zone.zoneId) { mutableStateOf<List<ThermalTrip>?>(null) }
+
+    LaunchedEffect(expanded) {
+        if (expanded && rootGranted && trips == null) {
+            trips = withContext(Dispatchers.IO) { ThermalTweaks.listTripPoints(zone.zoneId) }
+        }
+    }
+
+    val tempC = zone.tempMilliC?.let { it / 1000.0 }
+    val hot = (tempC ?: 0.0) >= 45.0
+
+    ElevatedCard(
+        onClick = { if (rootGranted) expanded = !expanded },
+        enabled = rootGranted,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        zone.type ?: zone.zoneId,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Text(zone.zoneId, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    tempC?.let { "%.1f°C".format(it) } ?: "n/a",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(6.dp))
+                val t = trips
+                when {
+                    t == null -> Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                    t.isEmpty() -> Text(
+                        "No writable trip points on this zone.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    else -> t.forEach { trip -> TripRow(trip) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripRow(trip: ThermalTrip) {
+    var tempMilliC by remember(trip.zoneId, trip.index) { mutableStateOf(trip.tempMilliC) }
+    val scope = rememberCoroutineScope()
+
+    fun adjust(deltaMilliC: Int) {
+        val next = (tempMilliC ?: return) + deltaMilliC
+        tempMilliC = next
+        scope.launch(Dispatchers.IO) { ThermalTweaks.setTripTemp(trip.zoneId, trip.index, next) }
+    }
+
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(trip.type ?: "trip ${trip.index}", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                tempMilliC?.let { "%.1f°C".format(it / 1000.0) } ?: "n/a",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = { adjust(-1000) }, enabled = tempMilliC != null) {
+            Icon(Icons.Filled.Remove, contentDescription = "lower by 1°C")
+        }
+        IconButton(onClick = { adjust(1000) }, enabled = tempMilliC != null) {
+            Icon(Icons.Filled.Add, contentDescription = "raise by 1°C")
+        }
+    }
+}
+
+@Composable
+fun InfoTab() {
+    var infoItems by remember { mutableStateOf<List<InfoItem>?>(null) }
+
+    LaunchedEffect(Unit) {
+        infoItems = withContext(Dispatchers.IO) { KernelInfoTweaks.collect() }
+    }
+
+    LoadingOrEmptyOrContent(
+        loading = infoItems == null,
+        empty = infoItems?.isEmpty() == true,
+        emptyMessage = "No info available."
+    ) {
+        LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(infoItems.orEmpty()) { info ->
+                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(info.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            info.value,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
@@ -487,7 +776,7 @@ fun ThermalTab(rootGranted: Boolean) {
 }
 
 /**
- * Full-system frequency scan: walks /sys for every *available_frequencies
+ * Full-system frequency scan: walks /sys for every available_frequencies
  * node and lets you push every discovered node to its max in one tap, or
  * tap an individual frequency chip to lock just that node to that value.
  */
@@ -505,7 +794,7 @@ fun ScanTab(rootGranted: Boolean) {
     LoadingOrEmptyOrContent(
         loading = rootGranted && nodes == null,
         empty = nodes?.isEmpty() == true,
-        emptyMessage = "No *available_frequencies nodes found under /sys."
+        emptyMessage = "No available_frequencies nodes found under /sys."
     ) {
         LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -553,7 +842,9 @@ fun ScanTab(rootGranted: Boolean) {
                         "${if (r.success) "✓" else "✗"} ${r.path} → ${r.value}",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (r.success) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.error,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 item { Spacer(Modifier.height(4.dp)) }
@@ -566,7 +857,9 @@ fun ScanTab(rootGranted: Boolean) {
                         Text(
                             node.dir,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             "min ${node.frequencies.first()} · max ${node.frequencies.last()}",
@@ -629,7 +922,7 @@ private fun LoadingOrEmptyOrContent(
             CircularProgressIndicator()
         }
         empty -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         else -> content()
     }
