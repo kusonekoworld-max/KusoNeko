@@ -16,18 +16,15 @@ data class ApplyResult(
 )
 
 /**
- * Universal frequency discovery + "set everything to max" action, matching:
- *
- *   for f in $(find /sys -name "*available_frequencies"); do
- *     d=${f%/*}; m=$(tr ' ' '\n' <"$f" | sort -n | tail -1)
- *     for t in "$d"/*max_freq "$d"/*min_freq; do
- *       [ -f "$t" ] && chmod 644 "$t" && echo "$m" > "$t"
- *     done
- *   done
+ * Universal frequency discovery + "set everything to max" action, matching
+ * this shell one-liner: find every "available_frequencies" file under
+ * /sys, take the highest value listed in it, then write that value into
+ * every sibling "max_freq" and "min_freq" file in the same directory
+ * (chmod'ing them writable first, since some are read-only by default).
  *
  * This walks the whole /sys tree rather than a fixed CPU/GPU path list, so
  * it also catches devfreq buses, bus/DDR scaling nodes, etc. — anything
- * that exposes the standard *available_frequencies / *max_freq / *min_freq
+ * that exposes the standard available_frequencies / max_freq / min_freq
  * trio, on any chipset.
  */
 object SystemWideTweaks {
