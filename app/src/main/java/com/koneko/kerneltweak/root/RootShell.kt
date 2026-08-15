@@ -33,6 +33,15 @@ object RootShell {
         return out.ifEmpty { null }
     }
 
+    /**
+     * Read a space/newline-separated sysfs list node (governors, frequency
+     * tables, etc). Splits on any run of whitespace and drops empty tokens,
+     * so double spaces or stray newlines from vendor kernels never produce
+     * blank entries downstream.
+     */
+    fun readList(path: String): List<String> =
+        read(path)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotBlank() } ?: emptyList()
+
     /** Write a value to a sysfs node. Returns true on success. */
     fun write(path: String, value: String): Boolean {
         val result = Shell.cmd("echo '$value' > '$path' 2>/dev/null").exec()
