@@ -37,7 +37,7 @@ object ProfileTweaks {
             }
             val freqs = policy.availableFrequencies
             if (freqs.isNotEmpty()) {
-                val (min, max) = clampRange(freqs, profile)
+                val (min, max) = clampRange(freqs.map { it.toLong() }, profile)
                 CpuTweaks.setMinFreq(policy.policyId, min.toInt())
                 CpuTweaks.setMaxFreq(policy.policyId, max.toInt())
             }
@@ -49,7 +49,7 @@ object ProfileTweaks {
             }
             val freqs = node.availableFrequencies
             if (freqs.isNotEmpty()) {
-                val (min, max) = clampRange(freqs, profile)
+                val (min, max) = clampRange(freqs.map { it.toLong() }, profile)
                 GpuTweaks.setMinFreq(node.nodePath, min)
                 GpuTweaks.setMaxFreq(node.nodePath, max)
             }
