@@ -7,6 +7,7 @@ data class CpuPolicy(
     val cpus: List<Int>,       // cpus sharing this policy (cluster)
     val currentGovernor: String?,
     val availableGovernors: List<String>,
+    val currentFreq: Int?,     // kHz, actual hardware freq when readable
     val minFreq: Int?,
     val maxFreq: Int?,
     val availableFrequencies: List<Int>
@@ -52,20 +53,37 @@ object CpuTweaks {
     }
 
     private fun readPolicy(base: String, id: String, fallbackCpus: List<Int> = emptyList()): CpuPolicy {
-        val cpus = RootShell.read("$base/related_cpus")
-            ?.trim()?.split(" ")?.mapNotNull { it.toIntOrNull() }
-            ?: fallbackCpus
+        val cpus = RootShell.readList("$base/related_cpus").mapNotNull { it.toIntOrNull() }
+            .ifEmpty { fallbackCpus }
+
+        var governors = RootShell.readList("$base/scaling_available_governors")
+        if (governors.isEmpty() && cpus.isNotEmpty()) {
+            // Some vendor kernels only populate this under cpuN, not the
+            // shared policy dir — fall back to the first cpu in the cluster.
+            governors = RootShell.readList("$CPU_ROOT/cpu${cpus.first()}/cpufreq/scaling_available_governors")
+        }
+
+        var freqs = RootShell.readList("$base/scaling_available_frequencies")
+            .mapNotNull { it.toIntOrNull() }.sorted()
+        if (freqs.isEmpty() && cpus.isNotEmpty()) {
+            freqs = RootShell.readList("$CPU_ROOT/cpu${cpus.first()}/cpufreq/scaling_available_frequencies")
+                .mapNotNull { it.toIntOrNull() }.sorted()
+        }
+
+        // Prefer cpuinfo_cur_freq (raw hardware counter) over scaling_cur_freq
+        // (governor's last requested value, can lag on some drivers).
+        val curFreq = RootShell.read("$base/cpuinfo_cur_freq")?.trim()?.toIntOrNull()
+            ?: RootShell.read("$base/scaling_cur_freq")?.trim()?.toIntOrNull()
 
         return CpuPolicy(
             policyId = id,
             cpus = cpus,
-            currentGovernor = RootShell.read("$base/scaling_governor"),
-            availableGovernors = RootShell.read("$base/scaling_available_governors")
-                ?.trim()?.split(" ") ?: emptyList(),
+            currentGovernor = RootShell.read("$base/scaling_governor")?.trim(),
+            availableGovernors = governors,
+            currentFreq = curFreq,
             minFreq = RootShell.read("$base/scaling_min_freq")?.trim()?.toIntOrNull(),
             maxFreq = RootShell.read("$base/scaling_max_freq")?.trim()?.toIntOrNull(),
-            availableFrequencies = RootShell.read("$base/scaling_available_frequencies")
-                ?.trim()?.split(" ")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
+            availableFrequencies = freqs
         )
     }
 
