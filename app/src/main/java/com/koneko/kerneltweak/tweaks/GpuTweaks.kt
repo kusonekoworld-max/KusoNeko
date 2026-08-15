@@ -24,7 +24,7 @@ data class GpuState(
  *  1. /sys/class/kgsl/kgsl-3d0/devfreq — direct Adreno core GPU node,
  *     read first/always since this project's primary targets are
  *     Snapdragon GKI kernels and this path is guaranteed complete.
- *  2. Every entry under /sys/class/devfreq/* whose name matches a GPU
+ *  2. Every entry under /sys/class/devfreq/ whose name matches a GPU
  *     hint (gpu, kgsl, mali, img, kbase, gpubw, bwmon) — covers bus/
  *     bandwidth scaling nodes plus non-Adreno GPUs (Mali, PowerVR) via
  *     the generic Linux devfreq framework.
