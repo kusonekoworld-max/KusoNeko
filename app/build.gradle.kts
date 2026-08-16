@@ -1,10 +1,8 @@
 plugins {
-    id("com.android.application") version "8.7.3" apply false
-    id("com.android.library") version "8.7.3" apply false
-    id("org.jetbrains.kotlin.android") version "2.0.0" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.0" apply false
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
 }
-
 
 android {
     namespace = "com.koneko.kerneltweak"
@@ -21,8 +19,6 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signing is injected via CI (see .github/workflows/build.yml).
-            // Locally this builds an unsigned/debug-signed APK.
         }
     }
 
@@ -36,18 +32,11 @@ android {
     buildFeatures {
         compose = true
     }
-    // composeOptions { kotlinCompilerExtensionVersion = ... } is GONE.
-    // With the Kotlin 2.0+ compose compiler plugin above, the compose
-    // compiler version is tied to the Kotlin version automatically —
-    // this block is not needed anymore and will just be ignored/error
-    // depending on AGP version.
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
-    // BOM bumped: material3 1.4.0 (stable) is what ships LoadingIndicator /
-    // ContainedLoadingIndicator (the wavy Material3 Expressive loader).
     implementation(platform("androidx.compose:compose-bom:2025.12.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
