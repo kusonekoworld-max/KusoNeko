@@ -111,29 +111,6 @@ private val BOTTOM_NAV_DESTS = listOf(Dest.DASHBOARD, Dest.CPU, Dest.GPU, Dest.T
  * real estate.
  */
 @Composable
-private fun IconBadge(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    containerColor: Color,
-    contentColor: Color,
-    size: Dp = 44.dp
-) {
-    Surface(
-        shape = CircleShape,
-        color = containerColor,
-        modifier = Modifier.size(size)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(size * 0.5f)
-            )
-        }
-    }
-}
-
-@Composable
 fun KernelTweakApp(rootGranted: Boolean) {
     var dest by remember { mutableStateOf(Dest.DASHBOARD) }
 
@@ -259,88 +236,83 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
     val hottest = zones.mapNotNull { it.tempMilliC }.maxOrNull()?.let { it / 1000.0 }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
-                Text(
-                    "KusoNekoTune",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    "Kernel performance",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        item { HeroStatusCard(rootGranted, hottest) }
 
+        item { SectionLabel("At a glance") }
         item {
-            AospStatusCard(rootGranted, hottest)
-        }
-
-        item { AospSectionTitle("Device status") }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                AospPreferenceRow(
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    modifier = Modifier.weight(1f),
                     icon = Icons.Filled.Speed,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     title = "CPU",
-                    summary = if (rootGranted) {
-                        "${policies.size} policy${if (policies.size == 1) "" else "ies"} · " +
-                                (policies.firstOrNull()?.currentGovernor ?: "No governor")
-                    } else "Root access required",
-                    trailing = policies.firstOrNull()?.currentFreq?.div(1000)?.let { "$it MHz" } ?: "—",
-                    container = MaterialTheme.colorScheme.surfaceContainerLow
+                    value = policies.size.toString(),
+                    subtitle = policies.joinToString(" · ") { it.currentGovernor ?: "?" }.ifEmpty { "no data" }
                 )
-                AospPreferenceRow(
+                StatCard(
+                    modifier = Modifier.weight(1f),
                     icon = Icons.Filled.Memory,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     title = "GPU",
-                    summary = if (rootGranted) {
-                        "${gpuNodes.size} node${if (gpuNodes.size == 1) "" else "s"} · " +
-                                (gpuNodes.firstOrNull()?.currentGovernor ?: "No governor")
-                    } else "Root access required",
-                    trailing = gpuNodes.firstOrNull()?.currentFreq?.div(1_000_000)?.let { "$it MHz" } ?: "—",
-                    container = MaterialTheme.colorScheme.surfaceContainerLow
+                    value = gpuNodes.size.toString(),
+                    subtitle = gpuNodes.firstOrNull()?.currentGovernor ?: "no data"
                 )
-                AospPreferenceRow(
+                StatCard(
+                    modifier = Modifier.weight(1f),
                     icon = Icons.Filled.Thermostat,
-                    title = "Thermal",
-                    summary = "${zones.size} zone(s) reporting",
-                    trailing = hottest?.let { "%.1f°C".format(it) } ?: "—",
-                    container = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = tempContainerColor(hottest, MaterialTheme.colorScheme),
+                    contentColor = tempOnContainerColor(hottest, MaterialTheme.colorScheme),
+                    title = "Hottest",
+                    value = hottest?.let { "%.0f°".format(it) } ?: "n/a",
+                    subtitle = "${zones.size} zone(s)"
                 )
             }
         }
 
-        item { AospSectionTitle("Quick actions") }
-
+        item { SectionLabel("Quick actions") }
         item {
-            AospActionRow(
-                icon = Icons.Filled.Bolt,
-                title = "Scan frequencies",
-                summary = "Find CPU and GPU frequency nodes",
-                onClick = onOpenScan
-            )
+            ElevatedCard(onClick = onOpenScan, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+                Row(
+                    Modifier.padding(16.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconBadge(
+                        icon = Icons.Filled.Bolt,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Full system frequency scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                        Text(
+                            "Find and max every frequency node under /sys",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
+        item { BootConfigCard(rootGranted, policies, gpuNodes) }
 
+        item { SectionLabel("Profiles") }
         item {
-            BootConfigCard(rootGranted, policies, gpuNodes)
-        }
-
-        item { AospSectionTitle("Performance profiles") }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ProfileButton(
                     icon = Icons.Filled.BatteryStd,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     profile = ProfileTweaks.Profile.BATTERY_SAVER,
-                    description = "Lower clocks and conservative governor",
+                    description = "Lower clocks, conservative governor — longer screen-on time",
                     enabled = rootGranted && applying == null,
                     applying = applying == ProfileTweaks.Profile.BATTERY_SAVER,
                     applied = lastApplied == ProfileTweaks.Profile.BATTERY_SAVER
@@ -353,13 +325,12 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                         lastApplied = ProfileTweaks.Profile.BATTERY_SAVER
                     }
                 }
-
                 ProfileButton(
                     icon = Icons.Filled.Tune,
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     profile = ProfileTweaks.Profile.BALANCED,
-                    description = "Adaptive everyday performance",
+                    description = "Full range, adaptive governor — default daily driving",
                     enabled = rootGranted && applying == null,
                     applying = applying == ProfileTweaks.Profile.BALANCED,
                     applied = lastApplied == ProfileTweaks.Profile.BALANCED
@@ -372,13 +343,12 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                         lastApplied = ProfileTweaks.Profile.BALANCED
                     }
                 }
-
                 ProfileButton(
                     icon = Icons.Filled.RocketLaunch,
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     profile = ProfileTweaks.Profile.PERFORMANCE,
-                    description = "Prioritize maximum clocks",
+                    description = "Top-quartile clocks locked in — gaming / benchmarking",
                     enabled = rootGranted && applying == null,
                     applying = applying == ProfileTweaks.Profile.PERFORMANCE,
                     applied = lastApplied == ProfileTweaks.Profile.PERFORMANCE
@@ -396,150 +366,66 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
     }
 }
 
+/**
+ * Big status banner at the top of Home — root state front and center
+ * with a colored tonal background instead of a small caption under the
+ * app-bar title, plus the hottest-zone reading so the very first thing
+ * you see answers "is it safe to push clocks right now".
+ */
 @Composable
-private fun AospStatusCard(rootGranted: Boolean, hottest: Double?) {
-    val container = if (rootGranted) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.errorContainer
-    }
-    val onContainer = if (rootGranted) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onErrorContainer
-    }
+private fun HeroStatusCard(rootGranted: Boolean, hottest: Double?) {
+    val containerColor = if (rootGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    val onContainerColor = if (rootGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = container,
-        shape = MaterialTheme.shapes.extraLarge
+        color = containerColor,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+            Modifier.padding(20.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                if (rootGranted) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
-                contentDescription = null,
-                tint = onContainer,
-                modifier = Modifier.size(30.dp)
-            )
-            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (rootGranted) "Root access ready" else "Root access needed",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = onContainer
+                    if (rootGranted) "Root ready" else "Root not granted",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = onContainerColor
                 )
                 Text(
-                    if (rootGranted) "CPU, GPU and thermal controls are available."
-                    else "Grant root access to tune your device.",
+                    if (rootGranted) "Full tuning access is available."
+                    else "Grant root to unlock CPU/GPU/thermal tuning.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = onContainer.copy(alpha = .82f)
+                    color = onContainerColor.copy(alpha = 0.85f)
                 )
             }
-            hottest?.let {
+            if (hottest != null) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "%.0f°C".format(it),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = onContainer
+                        "%.1f°C".format(hottest),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = onContainerColor
                     )
-                    Text(
-                        "thermal",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = onContainer.copy(alpha = .75f)
-                    )
+                    Text("hottest zone", style = MaterialTheme.typography.labelMedium, color = onContainerColor.copy(alpha = 0.85f))
                 }
             }
         }
     }
 }
 
+/** Circular tonal icon container — the "icon chip" look used throughout AOSP system apps. */
 @Composable
-private fun AospSectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp)
-    )
-}
-
-@Composable
-private fun AospPreferenceRow(
+private fun IconBadge(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    summary: String,
-    trailing: String,
-    container: Color
+    containerColor: Color,
+    contentColor: Color,
+    size: Dp = 44.dp
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = container
-    ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                trailing,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun AospActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    summary: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconBadge(
-                icon = icon,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                size = 40.dp
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(shape = CircleShape, color = containerColor, modifier = Modifier.size(size)) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(size * 0.5f))
         }
     }
 }
@@ -694,7 +580,8 @@ fun CpuTab(rootGranted: Boolean) {
         policies = fresh
         fresh.forEach { p ->
             val mhz = p.currentFreq?.div(1000)?.toFloat() ?: return@forEach
-            history[p.policyId] = (history[p.policyId].orEmpty() + mhz).takeLast(HISTORY_LEN)
+            val prev = history[p.policyId].orEmpty()
+            history[p.policyId] = (prev + mhz).takeLast(HISTORY_LEN)
         }
     }
 
@@ -713,24 +600,21 @@ fun CpuTab(rootGranted: Boolean) {
         emptyMessage = "No cpufreq policies found."
     ) {
         LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                AospPageHeader("CPU", "Processor frequency and governor controls")
-            }
             items(policies.orEmpty(), key = { it.policyId }) { policy ->
                 TweakCard(
                     modifier = Modifier.animateItem(),
                     title = policy.policyId,
-                    subtitle = "CPUs ${policy.cpus.joinToString(", ")}",
+                    subtitle = "cpus ${policy.cpus.joinToString(",")}",
                     valueText = "${policy.currentFreq?.div(1000) ?: "?"} MHz",
-                    statusText = policy.currentGovernor ?: "No governor",
+                    statusText = policy.currentGovernor ?: "no governor",
                     graphHistory = history[policy.policyId].orEmpty()
                 ) {
                     if (policy.availableGovernors.isNotEmpty()) {
-                        AospSectionTitle("Governor")
+                        SectionLabel("Governor")
                         FlowChips(
                             options = policy.availableGovernors,
                             selected = policy.currentGovernor,
@@ -785,7 +669,8 @@ fun GpuTab(rootGranted: Boolean) {
         nodes = fresh
         fresh.forEach { n ->
             val mhz = n.currentFreq?.div(1_000_000)?.toFloat() ?: return@forEach
-            history[n.nodePath] = (history[n.nodePath].orEmpty() + mhz).takeLast(HISTORY_LEN)
+            val prev = history[n.nodePath].orEmpty()
+            history[n.nodePath] = (prev + mhz).takeLast(HISTORY_LEN)
         }
     }
 
@@ -804,24 +689,21 @@ fun GpuTab(rootGranted: Boolean) {
         emptyMessage = "No GPU devfreq node found on this device."
     ) {
         LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                AospPageHeader("GPU", "Graphics frequency and governor controls")
-            }
             items(nodes.orEmpty(), key = { it.nodePath }) { node ->
                 TweakCard(
                     modifier = Modifier.animateItem(),
                     title = node.label,
                     subtitle = node.nodePath,
                     valueText = "${node.currentFreq?.div(1_000_000) ?: "?"} MHz",
-                    statusText = node.currentGovernor ?: "No governor",
+                    statusText = node.currentGovernor ?: "no governor",
                     graphHistory = history[node.nodePath].orEmpty()
                 ) {
                     if (node.availableGovernors.isNotEmpty()) {
-                        AospSectionTitle("Governor")
+                        SectionLabel("Governor")
                         FlowChips(
                             options = node.availableGovernors,
                             selected = node.currentGovernor,
@@ -862,14 +744,6 @@ fun GpuTab(rootGranted: Boolean) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AospPageHeader(title: String, subtitle: String) {
-    Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -934,7 +808,7 @@ private fun TweakCard(
     graphHistory: List<Float> = emptyList(),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    var expanded by rememberSaveable(title) { mutableStateOf(false) }
+    var expanded by rememberSaveable(title) { mutableStateOf(true) }
 
     ElevatedCard(modifier.fillMaxWidth().animateContentSize(), shape = MaterialTheme.shapes.large) {
         Column {
