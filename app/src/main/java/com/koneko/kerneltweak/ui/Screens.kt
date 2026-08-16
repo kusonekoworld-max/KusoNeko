@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.koneko.kerneltweak.ui
 
 import androidx.compose.animation.AnimatedVisibility
