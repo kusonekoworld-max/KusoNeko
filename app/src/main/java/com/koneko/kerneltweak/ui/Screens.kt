@@ -1,7 +1,15 @@
 package com.koneko.kerneltweak.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -9,13 +17,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Remove
@@ -23,14 +33,24 @@ import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koneko.kerneltweak.boot.BootConfigStore
@@ -43,13 +63,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Dest(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    DASHBOARD("Home", Icons.Filled.Dashboard),
-    CPU("CPU", Icons.Filled.Speed),
-    GPU("GPU", Icons.Filled.Memory),
-    THERMAL("Thermal", Icons.Filled.Thermostat),
-    INFO("Info", Icons.Filled.Info),
-    SCAN("Scan", Icons.Filled.Bolt) // reached from the Dashboard card, not shown in bottom nav
+private enum class Dest(
+    val label: String,
+    val iconFilled: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconOutlined: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    DASHBOARD("Home", Icons.Filled.Home, Icons.Outlined.Home),
+    CPU("CPU", Icons.Filled.Speed, Icons.Outlined.Speed),
+    GPU("GPU", Icons.Filled.Memory, Icons.Outlined.Memory),
+    THERMAL("Thermal", Icons.Filled.Thermostat, Icons.Outlined.Thermostat),
+    INFO("Info", Icons.Filled.Info, Icons.Outlined.Info),
+    SCAN("Scan", Icons.Filled.Bolt, Icons.Outlined.Bolt) // reached from the Dashboard card, not shown in bottom nav
 }
 
 private val BOTTOM_NAV_DESTS = listOf(Dest.DASHBOARD, Dest.CPU, Dest.GPU, Dest.THERMAL, Dest.INFO)
@@ -64,7 +88,7 @@ fun KernelTweakApp(rootGranted: Boolean) {
             CenterAlignedTopAppBar(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("KernelTweak", fontWeight = FontWeight.SemiBold)
+                        Text("KusoNekoTune", fontWeight = FontWeight.SemiBold)
                         Text(
                             if (rootGranted) "root ready" else "root not granted",
                             style = MaterialTheme.typography.labelMedium,
@@ -88,10 +112,16 @@ fun KernelTweakApp(rootGranted: Boolean) {
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 BOTTOM_NAV_DESTS.forEach { d ->
+                    val selected = dest == d
                     NavigationBarItem(
-                        selected = dest == d,
+                        selected = selected,
                         onClick = { dest = d },
-                        icon = { Icon(d.icon, contentDescription = d.label) },
+                        icon = {
+                            Icon(
+                                if (selected) d.iconFilled else d.iconOutlined,
+                                contentDescription = d.label
+                            )
+                        },
                         label = { Text(d.label) }
                     )
                 }
@@ -108,6 +138,7 @@ fun KernelTweakApp(rootGranted: Boolean) {
                     Dest.INFO -> InfoTab()
                     Dest.SCAN -> ScanTab(rootGranted)
                 }
+
             }
         }
     }
@@ -154,12 +185,18 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(
                     modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.Speed,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     title = "CPU clusters",
                     value = policies.size.toString(),
                     subtitle = policies.joinToString(" · ") { it.currentGovernor ?: "?" }.ifEmpty { "no data" }
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.Memory,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     title = "GPU nodes",
                     value = gpuNodes.size.toString(),
                     subtitle = gpuNodes.firstOrNull()?.currentGovernor ?: "no data"
@@ -169,6 +206,9 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
         item {
             StatCard(
                 modifier = Modifier.fillMaxWidth(),
+                icon = Icons.Filled.Thermostat,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 title = "Hottest zone",
                 value = hottest?.let { "%.1f°C".format(it) } ?: "n/a",
                 subtitle = "${zones.size} thermal zone(s) tracked"
@@ -180,7 +220,11 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                     Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    IconBadge(
+                        icon = Icons.Filled.Bolt,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Full system frequency scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
@@ -192,7 +236,7 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -203,6 +247,8 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ProfileButton(
                     icon = Icons.Filled.BatteryStd,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     profile = ProfileTweaks.Profile.BATTERY_SAVER,
                     description = "Lower clocks, conservative governor — longer screen-on time",
                     enabled = rootGranted && applying == null,
@@ -219,6 +265,8 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                 }
                 ProfileButton(
                     icon = Icons.Filled.Tune,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     profile = ProfileTweaks.Profile.BALANCED,
                     description = "Full range, adaptive governor — default daily driving",
                     enabled = rootGranted && applying == null,
@@ -235,6 +283,8 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
                 }
                 ProfileButton(
                     icon = Icons.Filled.RocketLaunch,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     profile = ProfileTweaks.Profile.PERFORMANCE,
                     description = "Top-quartile clocks locked in — gaming / benchmarking",
                     enabled = rootGranted && applying == null,
@@ -254,6 +304,21 @@ fun DashboardTab(rootGranted: Boolean, onOpenScan: () -> Unit) {
     }
 }
 
+/** Circular tonal icon container — the "icon chip" look used throughout AOSP system apps. */
+@Composable
+private fun IconBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    size: Dp = 44.dp
+) {
+    Surface(shape = CircleShape, color = containerColor, modifier = Modifier.size(size)) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(size * 0.5f))
+        }
+    }
+}
+
 @Composable
 private fun BootConfigCard(rootGranted: Boolean, policies: List<CpuPolicy>, gpuNodes: List<GpuState>) {
     val context = LocalContext.current
@@ -267,6 +332,12 @@ private fun BootConfigCard(rootGranted: Boolean, policies: List<CpuPolicy>, gpuN
             Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconBadge(
+                icon = Icons.Filled.Update,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("Apply on boot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 Text(
@@ -312,13 +383,23 @@ private fun BootConfigCard(rootGranted: Boolean, policies: List<CpuPolicy>, gpuN
 }
 
 @Composable
-private fun StatCard(modifier: Modifier = Modifier, title: String, value: String, subtitle: String) {
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    title: String,
+    value: String,
+    subtitle: String
+) {
     ElevatedCard(modifier = modifier, shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(16.dp)) {
+            IconBadge(icon, containerColor, contentColor, size = 36.dp)
+            Spacer(Modifier.height(10.dp))
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp),
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -337,6 +418,8 @@ private fun StatCard(modifier: Modifier = Modifier, title: String, value: String
 @Composable
 private fun ProfileButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
     profile: ProfileTweaks.Profile,
     description: String,
     enabled: Boolean,
@@ -354,7 +437,7 @@ private fun ProfileButton(
             Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            IconBadge(icon, containerColor, contentColor)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(profile.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
@@ -391,71 +474,54 @@ fun CpuTab(rootGranted: Boolean) {
         LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 16.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(policies.orEmpty()) { policy ->
-                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(policy.policyId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                            Text(
-                                "cpus ${policy.cpus.joinToString(",")}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            "${policy.currentFreq?.div(1000) ?: "?"} MHz now",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+            items(policies.orEmpty(), key = { it.policyId }) { policy ->
+                TweakCard(
+                    modifier = Modifier.animateItemPlacement(),
+                    title = policy.policyId,
+                    subtitle = "cpus ${policy.cpus.joinToString(",")}",
+                    valueText = "${policy.currentFreq?.div(1000) ?: "?"} MHz",
+                    statusText = policy.currentGovernor ?: "no governor"
+                ) {
+                    if (policy.availableGovernors.isNotEmpty()) {
+                        SectionLabel("Governor")
+                        FlowChips(
+                            options = policy.availableGovernors,
+                            selected = policy.currentGovernor,
+                            onSelect = { gov ->
+                                scope.launch(Dispatchers.IO) {
+                                    CpuTweaks.setGovernor(policy.policyId, gov)
+                                    reload()
+                                }
+                            }
                         )
+                    } else {
+                        ErrorHint("No scaling_available_governors exposed for this policy.")
+                    }
 
-                        if (policy.availableGovernors.isNotEmpty()) {
-                            SectionLabel("Governor")
-                            FlowChips(
-                                options = policy.availableGovernors,
-                                selected = policy.currentGovernor,
-                                onSelect = { gov ->
-                                    scope.launch(Dispatchers.IO) {
-                                        CpuTweaks.setGovernor(policy.policyId, gov)
-                                        reload()
-                                    }
+                    if (policy.availableFrequencies.isNotEmpty()) {
+                        FreqEditor(
+                            label = "Frequency (MHz)",
+                            values = policy.availableFrequencies.map { (it / 1000).toLong() },
+                            current = policy.currentFreq?.let { (it / 1000).toLong() },
+                            minValue = policy.minFreq?.let { (it / 1000).toLong() },
+                            maxValue = policy.maxFreq?.let { (it / 1000).toLong() },
+                            onSetMin = { v ->
+                                scope.launch(Dispatchers.IO) {
+                                    CpuTweaks.setMinFreq(policy.policyId, (v * 1000).toInt())
+                                    reload()
                                 }
-                            )
-                        } else {
-                            ErrorHint("No scaling_available_governors exposed for this policy.")
-                        }
-
-                        if (policy.availableFrequencies.isNotEmpty()) {
-                            FreqEditor(
-                                label = "Frequency (MHz)",
-                                values = policy.availableFrequencies.map { (it / 1000).toLong() },
-                                current = policy.currentFreq?.let { (it / 1000).toLong() },
-                                minValue = policy.minFreq?.let { (it / 1000).toLong() },
-                                maxValue = policy.maxFreq?.let { (it / 1000).toLong() },
-                                onSetMin = { v ->
-                                    scope.launch(Dispatchers.IO) {
-                                        CpuTweaks.setMinFreq(policy.policyId, (v * 1000).toInt())
-                                        reload()
-                                    }
-                                },
-                                onSetMax = { v ->
-                                    scope.launch(Dispatchers.IO) {
-                                        CpuTweaks.setMaxFreq(policy.policyId, (v * 1000).toInt())
-                                        reload()
-                                    }
+                            },
+                            onSetMax = { v ->
+                                scope.launch(Dispatchers.IO) {
+                                    CpuTweaks.setMaxFreq(policy.policyId, (v * 1000).toInt())
+                                    reload()
                                 }
-                            )
-                        } else {
-                            ErrorHint("No scaling_available_frequencies exposed — min/max cannot be set here.")
-                        }
+                            }
+                        )
+                    } else {
+                        ErrorHint("No scaling_available_frequencies exposed — min/max cannot be set here.")
                     }
                 }
             }
@@ -479,66 +545,130 @@ fun GpuTab(rootGranted: Boolean) {
         LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 16.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(nodes.orEmpty()) { node ->
-                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(node.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                        Text(
-                            node.nodePath,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "${node.currentFreq?.div(1_000_000) ?: "?"} MHz now",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        if (node.availableGovernors.isNotEmpty()) {
-                            SectionLabel("Governor")
-                            FlowChips(
-                                options = node.availableGovernors,
-                                selected = node.currentGovernor,
-                                onSelect = { gov ->
-                                    scope.launch(Dispatchers.IO) {
-                                        GpuTweaks.setGovernor(node.nodePath, gov)
-                                        reload()
-                                    }
+            items(nodes.orEmpty(), key = { it.nodePath }) { node ->
+                TweakCard(
+                    modifier = Modifier.animateItemPlacement(),
+                    title = node.label,
+                    subtitle = node.nodePath,
+                    valueText = "${node.currentFreq?.div(1_000_000) ?: "?"} MHz",
+                    statusText = node.currentGovernor ?: "no governor"
+                ) {
+                    if (node.availableGovernors.isNotEmpty()) {
+                        SectionLabel("Governor")
+                        FlowChips(
+                            options = node.availableGovernors,
+                            selected = node.currentGovernor,
+                            onSelect = { gov ->
+                                scope.launch(Dispatchers.IO) {
+                                    GpuTweaks.setGovernor(node.nodePath, gov)
+                                    reload()
                                 }
-                            )
-                        } else {
-                            ErrorHint("No available_governors exposed on this node — governor switching isn't supported here.")
-                        }
-
-                        if (node.availableFrequencies.isNotEmpty()) {
-                            FreqEditor(
-                                label = "Frequency (MHz)",
-                                values = node.availableFrequencies.map { it / 1_000_000 },
-                                current = node.currentFreq?.div(1_000_000),
-                                minValue = node.minFreq?.div(1_000_000),
-                                maxValue = node.maxFreq?.div(1_000_000),
-                                onSetMin = { v ->
-                                    scope.launch(Dispatchers.IO) {
-                                        GpuTweaks.setMinFreq(node.nodePath, v * 1_000_000)
-                                        reload()
-                                    }
-                                },
-                                onSetMax = { v ->
-                                    scope.launch(Dispatchers.IO) {
-                                        GpuTweaks.setMaxFreq(node.nodePath, v * 1_000_000)
-                                        reload()
-                                    }
-                                }
-                            )
-                        } else {
-                            ErrorHint("No available_frequencies exposed — min/max cannot be set here.")
-                        }
+                            }
+                        )
+                    } else {
+                        ErrorHint("No available_governors exposed on this node — governor switching isn't supported here.")
                     }
+
+                    if (node.availableFrequencies.isNotEmpty()) {
+                        FreqEditor(
+                            label = "Frequency (MHz)",
+                            values = node.availableFrequencies.map { it / 1_000_000 },
+                            current = node.currentFreq?.div(1_000_000),
+                            minValue = node.minFreq?.div(1_000_000),
+                            maxValue = node.maxFreq?.div(1_000_000),
+                            onSetMin = { v ->
+                                scope.launch(Dispatchers.IO) {
+                                    GpuTweaks.setMinFreq(node.nodePath, v * 1_000_000)
+                                    reload()
+                                }
+                            },
+                            onSetMax = { v ->
+                                scope.launch(Dispatchers.IO) {
+                                    GpuTweaks.setMaxFreq(node.nodePath, v * 1_000_000)
+                                    reload()
+                                }
+                            }
+                        )
+                    } else {
+                        ErrorHint("No available_frequencies exposed — min/max cannot be set here.")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Shared collapsed-by-default card for CPU policies and GPU nodes: header
+ * always shows just the name, the live value (big number), and the
+ * current governor — enough to read the state of the device at a glance.
+ * Tapping it reveals the governor picker + frequency editor. Keeping the
+ * chip-heavy editing controls hidden until asked for is what keeps CPU/GPU
+ * from turning into a wall of buttons the moment the tab opens.
+ */
+@Composable
+private fun TweakCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    valueText: String,
+    statusText: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var expanded by rememberSaveable(title) { mutableStateOf(false) }
+
+    ElevatedCard(modifier.fillMaxWidth().animateContentSize(), shape = MaterialTheme.shapes.large) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        valueText,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    modifier = Modifier.padding(start = 4.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Top, animationSpec = tween(220)) + fadeIn(tween(220)),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(180)) + fadeOut(tween(140))
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
+                    content()
                 }
             }
         }
@@ -550,7 +680,6 @@ fun ThermalTab(rootGranted: Boolean) {
     var zones by remember { mutableStateOf<List<ThermalZone>?>(null) }
     var toggles by remember { mutableStateOf<List<String>>(emptyList()) }
     var coolingDevices by remember { mutableStateOf<List<CoolingDevice>>(emptyList()) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(rootGranted) {
         zones = withContext(Dispatchers.IO) { ThermalTweaks.listZones() }
@@ -567,47 +696,120 @@ fun ThermalTab(rootGranted: Boolean) {
     ) {
         LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (rootGranted && toggles.isNotEmpty()) {
-                item { SectionLabel("Throttle toggles") }
-                items(toggles) { path ->
-                    var checked by remember(path) { mutableStateOf(ThermalTweaks.currentToggleState(path) ?: true) }
-                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
-                        ListItem(
-                            headlineContent = {
-                                Text(path, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            },
-                            trailingContent = {
-                                Switch(
-                                    checked = checked,
-                                    onCheckedChange = { value ->
-                                        checked = value
-                                        scope.launch(Dispatchers.IO) { ThermalTweaks.setToggle(path, value) }
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-                item { Spacer(Modifier.height(8.dp)) }
+            item { SectionLabel("Zones — tap a zone to adjust its trip points") }
+            items(zones.orEmpty(), key = { it.zoneId }) { zone ->
+                ZoneCard(zone, rootGranted, modifier = Modifier.animateItemPlacement())
             }
 
             if (rootGranted && coolingDevices.isNotEmpty()) {
-                item { SectionLabel("Cooling devices") }
-                items(coolingDevices) { device ->
-                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = MaterialTheme.shapes.medium) {
-                        CoolingDeviceRow(device)
+                item {
+                    ExpandableSection(title = "Cooling devices", count = coolingDevices.size) {
+                        coolingDevices.forEachIndexed { i, device ->
+                            CoolingDeviceRow(device)
+                            if (i != coolingDevices.lastIndex) HorizontalDivider()
+                        }
                     }
                 }
-                item { Spacer(Modifier.height(8.dp)) }
             }
 
-            item { SectionLabel("Zones — tap to adjust trip points") }
-            items(zones.orEmpty()) { zone ->
-                ZoneCard(zone, rootGranted)
+            if (rootGranted && toggles.isNotEmpty()) {
+                item {
+                    ExpandableSection(title = "Throttle toggles", count = toggles.size) {
+                        toggles.forEachIndexed { i, path ->
+                            ToggleRow(path)
+                            if (i != toggles.lastIndex) HorizontalDivider()
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * Collapsed-by-default card with a tappable header (title + count badge +
+ * chevron). Groups of secondary controls (toggles, cooling devices) live
+ * inside one of these instead of rendering every control up front, so the
+ * tab reads as a clean status list until you actually want to dig in.
+ */
+@Composable
+private fun ExpandableSection(
+    title: String,
+    count: Int,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    ElevatedCard(Modifier.fillMaxWidth().animateContentSize(), shape = MaterialTheme.shapes.large) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            count.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand"
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Top, animationSpec = tween(220)) + fadeIn(tween(220)),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(180)) + fadeOut(tween(140))
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp)) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(path: String) {
+    var checked by remember(path) { mutableStateOf(ThermalTweaks.currentToggleState(path) ?: true) }
+    val scope = rememberCoroutineScope()
+
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            path,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = { value ->
+                checked = value
+                scope.launch(Dispatchers.IO) { ThermalTweaks.setToggle(path, value) }
+            }
+        )
     }
 }
 
@@ -617,7 +819,7 @@ private fun CoolingDeviceRow(device: CoolingDevice) {
     val scope = rememberCoroutineScope()
     var state by remember(device.deviceId) { mutableStateOf((device.curState ?: 0).toFloat()) }
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
                 device.type ?: device.deviceId,
@@ -649,7 +851,7 @@ private fun CoolingDeviceRow(device: CoolingDevice) {
 }
 
 @Composable
-private fun ZoneCard(zone: ThermalZone, rootGranted: Boolean) {
+private fun ZoneCard(zone: ThermalZone, rootGranted: Boolean, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
     var trips by remember(zone.zoneId) { mutableStateOf<List<ThermalTrip>?>(null) }
 
@@ -665,10 +867,10 @@ private fun ZoneCard(zone: ThermalZone, rootGranted: Boolean) {
     ElevatedCard(
         onClick = { if (rootGranted) expanded = !expanded },
         enabled = rootGranted,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium
+        modifier = modifier.fillMaxWidth().animateContentSize(),
+        shape = MaterialTheme.shapes.large
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -689,23 +891,37 @@ private fun ZoneCard(zone: ThermalZone, rootGranted: Boolean) {
                     fontWeight = FontWeight.Bold,
                     color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
+                if (rootGranted) {
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        modifier = Modifier.padding(start = 4.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
-            if (expanded) {
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(6.dp))
-                val t = trips
-                when {
-                    t == null -> Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Top, animationSpec = tween(220)) + fadeIn(tween(220)),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(180)) + fadeOut(tween(140))
+            ) {
+                Column {
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(6.dp))
+                    val t = trips
+                    when {
+                        t == null -> Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        }
+                        t.isEmpty() -> Text(
+                            "No writable trip points on this zone.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> t.forEach { trip -> TripRow(trip) }
                     }
-                    t.isEmpty() -> Text(
-                        "No writable trip points on this zone.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    else -> t.forEach { trip -> TripRow(trip) }
                 }
             }
         }
@@ -759,15 +975,24 @@ fun InfoTab() {
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(infoItems.orEmpty()) { info ->
-                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(info.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        Text(
-                            info.value,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = FontFamily.Monospace
+            items(infoItems.orEmpty(), key = { it.label }) { info ->
+                ElevatedCard(Modifier.fillMaxWidth().animateItemPlacement(), shape = MaterialTheme.shapes.medium) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(
+                            icon = Icons.Filled.Info,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            size = 32.dp
                         )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(info.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                info.value,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                     }
                 }
             }
@@ -851,8 +1076,8 @@ fun ScanTab(rootGranted: Boolean) {
             }
 
             item { SectionLabel("Discovered nodes — tap a value to lock min+max there") }
-            items(nodes.orEmpty()) { node ->
-                ElevatedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+            items(nodes.orEmpty(), key = { it.dir }) { node ->
+                ElevatedCard(Modifier.fillMaxWidth().animateItemPlacement(), shape = MaterialTheme.shapes.large) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
                             node.dir,
@@ -909,7 +1134,7 @@ private fun FlowRowFreqLock(node: FreqNode) {
     }
 }
 
-/** Shared loading / empty-state / content switcher so tabs don't repeat it. */
+/** Shared loading / empty-state / content switcher so tabs don't repeat it, with a soft crossfade between states instead of a hard cut. */
 @Composable
 private fun LoadingOrEmptyOrContent(
     loading: Boolean,
@@ -917,14 +1142,21 @@ private fun LoadingOrEmptyOrContent(
     emptyMessage: String,
     content: @Composable () -> Unit
 ) {
-    when {
-        loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+    val state = when {
+        loading -> "loading"
+        empty -> "empty"
+        else -> "content"
+    }
+    Crossfade(targetState = state, animationSpec = tween(220), label = "loadState") { s ->
+        when (s) {
+            "loading" -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            "empty" -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            else -> content()
         }
-        empty -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-        else -> content()
     }
 }
 
@@ -942,16 +1174,16 @@ private fun ErrorHint(text: String) {
     }
 }
 
-/** Wrapping row of FilterChips where the currently-active option is visually selected. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Single-row, horizontally-scrollable governor picker instead of a
+ * wrapping wall of chips — governor lists are short (usually 3-6) but a
+ * multi-row FlowRow still made the card feel busy. Scrolling one row is
+ * the same pattern Play Store / Settings use for filter chips.
+ */
 @Composable
 private fun FlowChips(options: List<String>, selected: String?, onSelect: (String) -> Unit) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        options.forEach { option ->
+    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(options) { option ->
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelect(option) },
@@ -962,13 +1194,14 @@ private fun FlowChips(options: List<String>, selected: String?, onSelect: (Strin
 }
 
 /**
- * Editable min/max frequency row: a Min/Max segmented toggle picks which
- * bound you're setting, then tapping any value in the wrapping chip row
- * writes it immediately. The value matching the live current frequency is
- * marked with a dot so it's easy to tell what's actually running right now
- * versus what the min/max clamp is set to.
+ * Min/max frequency picker as a single two-thumb slider instead of a wall
+ * of tappable frequency chips (which could mean 15-20+ chips per card).
+ * The slider snaps to indices into the sorted available-frequency table,
+ * so every position it can land on is a value the hardware actually
+ * supports — writes only fire on release, not per drag frame, to avoid
+ * hammering root with writes while dragging.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FreqEditor(
     label: String,
@@ -979,34 +1212,36 @@ private fun FreqEditor(
     onSetMin: (Long) -> Unit,
     onSetMax: (Long) -> Unit
 ) {
-    var editingMax by remember { mutableStateOf(true) }
+    if (values.size < 2) return
+    val lastIdx = values.size - 1
+
+    fun closestIndex(target: Long?, fallback: Int): Int {
+        if (target == null) return fallback
+        return values.indices.minByOrNull { i -> kotlin.math.abs(values[i] - target) } ?: fallback
+    }
+
+    var minIdx by remember(values, minValue) { mutableStateOf(closestIndex(minValue, 0).toFloat()) }
+    var maxIdx by remember(values, maxValue) { mutableStateOf(closestIndex(maxValue, lastIdx).toFloat()) }
 
     SectionLabel(label)
-    SingleChoiceSegmentedButtonRow(Modifier.padding(bottom = 8.dp)) {
-        SegmentedButton(
-            selected = editingMax,
-            onClick = { editingMax = true },
-            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-        ) { Text("Set Max") }
-        SegmentedButton(
-            selected = !editingMax,
-            onClick = { editingMax = false },
-            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-        ) { Text("Set Min") }
-    }
-
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        values.forEach { v ->
-            val isBoundSelected = if (editingMax) v == maxValue else v == minValue
-            FilterChip(
-                selected = isBoundSelected,
-                onClick = { if (editingMax) onSetMax(v) else onSetMin(v) },
-                label = { Text(if (v == current) "$v •" else "$v") }
-            )
-        }
-    }
+    Text(
+        "${values[minIdx.toInt()]} – ${values[maxIdx.toInt()]} MHz" + (current?.let { "  ·  now $it" } ?: ""),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 2.dp)
+    )
+    RangeSlider(
+        value = minIdx..maxIdx,
+        onValueChange = { range ->
+            minIdx = range.start
+            maxIdx = range.endInclusive
+        },
+        onValueChangeFinished = {
+            onSetMin(values[minIdx.toInt()])
+            onSetMax(values[maxIdx.toInt()])
+        },
+        valueRange = 0f..lastIdx.toFloat(),
+        steps = (values.size - 2).coerceAtLeast(0)
+    )
 }
+
