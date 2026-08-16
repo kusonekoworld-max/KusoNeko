@@ -187,7 +187,7 @@ fun KernelTweakApp(rootGranted: Boolean) {
     }
 }
 
-/** Fallback loader since Material 3 Expressive LoadingIndicator is currently internal. */
+/** Material3 Expressive wavy loader — drop-in swap for CircularProgressIndicator. */
 @Composable
 private fun WavyLoader(modifier: Modifier = Modifier, size: Dp = 40.dp) {
     CircularProgressIndicator(modifier = modifier.size(size), color = MaterialTheme.colorScheme.primary)
@@ -195,7 +195,7 @@ private fun WavyLoader(modifier: Modifier = Modifier, size: Dp = 40.dp) {
 
 @Composable
 private fun WavyLoaderSmall(modifier: Modifier = Modifier) {
-    CircularProgressIndicator(modifier = modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+    CircularProgressIndicator(modifier = modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
 }
 
 @Composable
@@ -965,7 +965,7 @@ fun ThermalTab(rootGranted: Boolean) {
  * Collapsed-by-default card with a tappable header (title + count badge +
  * chevron). Groups of secondary controls (toggles, cooling devices) live
  * inside one of these instead of rendering every control up front, so the
- * tab reads as a clean status list until you want to dig in.
+ * tab reads as a clean status list until you actually want to dig in.
  */
 @Composable
 private fun ExpandableSection(
