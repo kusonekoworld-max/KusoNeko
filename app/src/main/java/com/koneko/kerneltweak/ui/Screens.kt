@@ -111,6 +111,29 @@ private val BOTTOM_NAV_DESTS = listOf(Dest.DASHBOARD, Dest.CPU, Dest.GPU, Dest.T
  * real estate.
  */
 @Composable
+private fun IconBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    size: Dp = 44.dp
+) {
+    Surface(
+        shape = CircleShape,
+        color = containerColor,
+        modifier = Modifier.size(size)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(size * 0.5f)
+            )
+        }
+    }
+}
+
+@Composable
 fun KernelTweakApp(rootGranted: Boolean) {
     var dest by remember { mutableStateOf(Dest.DASHBOARD) }
 
