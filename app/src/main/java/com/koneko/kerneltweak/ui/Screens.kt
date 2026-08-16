@@ -1,7 +1,6 @@
 @file:OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
-    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class
 )
 
@@ -16,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -187,15 +187,15 @@ fun KernelTweakApp(rootGranted: Boolean) {
     }
 }
 
-/** Material3 Expressive wavy loader — drop-in swap for CircularProgressIndicator. */
+/** Fallback loader since Material 3 Expressive LoadingIndicator is currently internal. */
 @Composable
 private fun WavyLoader(modifier: Modifier = Modifier, size: Dp = 40.dp) {
-    LoadingIndicator(modifier = modifier.size(size), color = MaterialTheme.colorScheme.primary)
+    CircularProgressIndicator(modifier = modifier.size(size), color = MaterialTheme.colorScheme.primary)
 }
 
 @Composable
 private fun WavyLoaderSmall(modifier: Modifier = Modifier) {
-    LoadingIndicator(modifier = modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
+    CircularProgressIndicator(modifier = modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
 }
 
 @Composable
@@ -606,7 +606,7 @@ fun CpuTab(rootGranted: Boolean) {
         ) {
             items(policies.orEmpty(), key = { it.policyId }) { policy ->
                 TweakCard(
-                    modifier = Modifier.animateItemPlacement(),
+                    modifier = Modifier.animateItem(),
                     title = policy.policyId,
                     subtitle = "cpus ${policy.cpus.joinToString(",")}",
                     valueText = "${policy.currentFreq?.div(1000) ?: "?"} MHz",
@@ -695,7 +695,7 @@ fun GpuTab(rootGranted: Boolean) {
         ) {
             items(nodes.orEmpty(), key = { it.nodePath }) { node ->
                 TweakCard(
-                    modifier = Modifier.animateItemPlacement(),
+                    modifier = Modifier.animateItem(),
                     title = node.label,
                     subtitle = node.nodePath,
                     valueText = "${node.currentFreq?.div(1_000_000) ?: "?"} MHz",
@@ -933,7 +933,7 @@ fun ThermalTab(rootGranted: Boolean) {
             }
             item { SectionLabel("Zones — tap a zone to adjust its trip points") }
             items(zones.orEmpty(), key = { it.zoneId }) { zone ->
-                ZoneCard(zone, rootGranted, modifier = Modifier.animateItemPlacement())
+                ZoneCard(zone, rootGranted, modifier = Modifier.animateItem())
             }
 
             if (rootGranted && coolingDevices.isNotEmpty()) {
@@ -965,7 +965,7 @@ fun ThermalTab(rootGranted: Boolean) {
  * Collapsed-by-default card with a tappable header (title + count badge +
  * chevron). Groups of secondary controls (toggles, cooling devices) live
  * inside one of these instead of rendering every control up front, so the
- * tab reads as a clean status list until you actually want to dig in.
+ * tab reads as a clean status list until you want to dig in.
  */
 @Composable
 private fun ExpandableSection(
@@ -1231,7 +1231,7 @@ fun InfoTab() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(infoItems.orEmpty(), key = { it.label }) { info ->
-                ElevatedCard(Modifier.fillMaxWidth().animateItemPlacement(), shape = MaterialTheme.shapes.medium) {
+                ElevatedCard(Modifier.fillMaxWidth().animateItem(), shape = MaterialTheme.shapes.medium) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconBadge(
                             icon = Icons.Filled.Info,
@@ -1328,7 +1328,7 @@ fun ScanTab(rootGranted: Boolean) {
 
             item { SectionLabel("Discovered nodes — tap a value to lock min+max there") }
             items(nodes.orEmpty(), key = { it.dir }) { node ->
-                ElevatedCard(Modifier.fillMaxWidth().animateItemPlacement(), shape = MaterialTheme.shapes.large) {
+                ElevatedCard(Modifier.fillMaxWidth().animateItem(), shape = MaterialTheme.shapes.large) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
                             node.dir,
